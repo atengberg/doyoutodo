@@ -1,0 +1,14 @@
+todo:
+
+ change return type to "always" return Result, only assert failing if Constants.ENVIROMENT_DEV = true (optionally use try catch if is async call)
+
+NOTE:
+
+ canister names cannot be hyphenated, only use underscore
+
+ // <SMenuIcon isConnected={isConnected}><FontAwesomeIcon  icon={faSitemap} size="3x"/></SMenuIcon>
+
+ organize folder structure about scoped group functionality "
+
+ // input reducer use dynamic syntax to compose what's needed ('reducer of reducers')
+
