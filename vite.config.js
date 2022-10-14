@@ -16,7 +16,7 @@ try {
       .toString(),
   )
 } catch (e) {
-    console.error("\n⚠️  Before starting the dev server run: dfx deploy\n\n")
+    console.error("\n  Before starting the dev server run: dfx deploy\n\n")
 }
 
 // List of all aliases for canisters
@@ -87,7 +87,7 @@ export default defineConfig({
     //   isDev ? "development" : "production",
     // ),
     "process.env.NODE_ENV": JSON.stringify(
-      isDev ? "development" : "production", //development
+      isDev ? "development" : "production",
     ),
   },
 })

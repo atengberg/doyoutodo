@@ -1,35 +1,22 @@
-import Principal "mo:base/Principal";
-import Prim "mo:⛔";
-import Prelude "mo:base/Prelude";
-import D "mo:base/Debug";
-import HashMap "mo:base/HashMap";
-import Text "mo:base/Text";
-import Nat64 "mo:base/Nat64";
-import Nat32 "mo:base/Nat32";
-import Nat "mo:base/Nat";
-import Hash "mo:base/Hash";
-import Result "mo:base/Result";
-import Option "mo:base/Option";
-import Array "mo:base/Array";
-import List "mo:base/List";
-import Iter "mo:base/Iter";
-import Bool "mo:base/Bool";
 import Int "mo:base/Int";
+import Nat "mo:base/Nat";
+import Option "mo:base/Option";
+import Principal "mo:base/Principal";
+import Result "mo:base/Result";
 import Time "mo:base/Time";
-import Types "./modules/static/Types";
+
 import Constants "./modules/static/Constants";
+import Types "./modules/static/Types";
+
 import PIdContext "./modules/PIdContext";
 import UsersMetadata "./modules/UsersMetadata";
 import UsersTodos "./modules/UsersTodos";
 
-
-// todo 
-// wrap certain equality checks (so passing updatedTitle, ..., etc to a function that verifies it's been updated)
 // note tests so far in three parts, the third part uses its own users/todos and has two parts necessary for checking time elapsed,
 // upgrade integrity checks
 // ie test_todos() must be called in same canister version instance (for now) as testTodoCompletion()
 
-shared ({ caller }) actor class() = this {
+shared ({ caller = installer }) actor class() = this {
 
     stable var monotonicIdCreationCount: Nat = 0;
     stable var pidStableState: Types.PIdContextStableState = [];
@@ -62,7 +49,7 @@ shared ({ caller }) actor class() = this {
       if (users.userMetadataExists(createdId)) {
         assert(false);
       } else {
-        users.persistNewUserMetadata(createdId); // METADATA CREATE NEW CALL
+        users.initializeNewUserMetadata(createdId, canisterPrincipal); // METADATA CREATE NEW CALL
         switch (users.getUserMetadata(createdId)) {
           case (#err(msg)) { assert(false); };
           case (_) { }; 
@@ -75,6 +62,7 @@ shared ({ caller }) actor class() = this {
           case (#ok(user)) {
             assert(user.preferredDisplayName == Constants.LITERALLY_UNSPECIFIED);
             assert(user.emailAddress == Constants.LITERALLY_UNSPECIFIED);
+            assert(user.associatedPrincipal == Principal.toText(canisterPrincipal));
           };
           case (#err(msg)) { 
             assert(false);
@@ -85,7 +73,7 @@ shared ({ caller }) actor class() = this {
       };
 
       // check vals for todos
-      todos.persistNewUserTodosAllocation(createdId); // TODOS CREATE NEW CALL
+      todos.initializeNewUserTodos(createdId); // TODOS CREATE NEW CALL
       assert(todos.getSpecificUserTodos(createdId).size() == 0);
       assert(todos.getSpecificUserTotalTodoCount(createdId) == todos.getSpecificUserTodos(createdId).size());
       assert(todos.getCountOfAllTodos() == 0);
@@ -114,7 +102,7 @@ shared ({ caller }) actor class() = this {
       let newEmail = "new email address";
       // var lastUpdatedTime = Time.now(); cannot in same call have diff apparently
 
-      users.persistUserMetadataEdits(id, ?newName, ?newEmail);
+      var res = users.persistUserMetadataEdits(id, ?newName, ?newEmail);
       switch (users.getUserMetadata(id)) {
         case (#ok(user)) {
           assert(user.preferredDisplayName == newName);
@@ -125,7 +113,7 @@ shared ({ caller }) actor class() = this {
         };
       };
       let checkNameEditAlone = (newName#newName);
-      users.persistUserMetadataEdits(id, ?(checkNameEditAlone), null);
+      res := users.persistUserMetadataEdits(id, ?(checkNameEditAlone), null);
       switch (users.getUserMetadata(id)) {
         case (#ok(user)) {
           assert(user.preferredDisplayName == checkNameEditAlone);
@@ -136,7 +124,7 @@ shared ({ caller }) actor class() = this {
         };
       };
       let checkEmailAlone = (newEmail#newEmail);
-      users.persistUserMetadataEdits(id, null, ?checkEmailAlone);
+      res := users.persistUserMetadataEdits(id, null, ?checkEmailAlone);
       switch (users.getUserMetadata(id)) {
         case (#ok(user)) {
           assert(user.preferredDisplayName == checkNameEditAlone);
@@ -159,13 +147,13 @@ shared ({ caller }) actor class() = this {
     // going to add an arbitrary user id
     let newUserId = "completely_arbitrary_to_check";
 
-    users.persistNewUserMetadata(newUserId);
+    users.initializeNewUserMetadata(newUserId, canisterPrincipal);
     if (users.userMetadataExists(newUserId)) {
 
       let newName = "new user name";
       let newEmail = "new email address";
 
-      users.persistUserMetadataEdits(newUserId, ?newName, ?newEmail);
+      let res = users.persistUserMetadataEdits(newUserId, ?newName, ?newEmail);
       switch (users.getUserMetadata(newUserId)) {
         case (#ok(user)) {
           assert(user.preferredDisplayName == newName);
@@ -176,7 +164,7 @@ shared ({ caller }) actor class() = this {
         };
       };
       let checkNameEditAlone = (newName#newName);
-      users.persistUserMetadataEdits(newUserId, ?(checkNameEditAlone), null);
+      let res2 = users.persistUserMetadataEdits(newUserId, ?(checkNameEditAlone), null);
       switch (users.getUserMetadata(newUserId)) {
         case (#ok(user)) {
           assert(user.preferredDisplayName == checkNameEditAlone);
@@ -187,12 +175,11 @@ shared ({ caller }) actor class() = this {
         };
       };
       let checkEmailAlone = (newEmail#newEmail);
-      users.persistUserMetadataEdits(newUserId, null, ?checkEmailAlone);
+      let res3 = users.persistUserMetadataEdits(newUserId, null, ?checkEmailAlone);
       switch (users.getUserMetadata(newUserId)) {
         case (#ok(user)) {
           assert(user.preferredDisplayName == checkNameEditAlone);
           assert(user.emailAddress == checkEmailAlone);
-
         };
         case (#err(msg)) { 
           assert(false);
@@ -207,8 +194,8 @@ shared ({ caller }) actor class() = this {
     let firstUserNewName = "first user new name";
     let secondUserEmail = "second user email";
     
-    users.persistUserMetadataEdits(id, ?firstUserNewName, null);
-    users.persistUserMetadataEdits(newUserId, null, ?secondUserEmail);
+    let first = users.persistUserMetadataEdits(id, ?firstUserNewName, null);
+    let second = users.persistUserMetadataEdits(newUserId, null, ?secondUserEmail);
 
     switch (users.getUserMetadata(id)) {
       case (#ok(user)) {
@@ -232,7 +219,7 @@ shared ({ caller }) actor class() = this {
     assert(users.getEntries().size() == users.getCurrentUsersCount());
 
     // add another to todos
-    todos.persistNewUserTodosAllocation(newUserId);
+    todos.initializeNewUserTodos(newUserId);
 
     assert(todos.getEntries().size() == 2);
     assert(todos.getCountOfAllTodos() == 0);
@@ -250,7 +237,7 @@ shared ({ caller }) actor class() = this {
         assert(false);
       };
     };
-    users.persistUserMetadataEdits(id, ?"confounded", null);
+    var res = users.persistUserMetadataEdits(id, ?"confounded", null);
     switch (users.getUserMetadata(id)) {
       case (#ok(user)) {
         timeTest #= " NEXT: " # Int.toText(user.epochLastUpdateTime);
@@ -270,15 +257,16 @@ shared ({ caller }) actor class() = this {
 
   public func test_todos(): async Result.Result<([Types.Todo]), Text> {
 
+    let canisterPrincipal = Principal.fromActor(this);
 
     assert(todosTest.getCountOfAllTodos() == 0);
     assert(todosTest.getCountOfAllTodos() == todosTest.getEntries().size());
 
     let idOne = "idOne";
-    usersMetadataTodosTest.persistNewUserMetadata(idOne);
+    usersMetadataTodosTest.initializeNewUserMetadata(idOne, canisterPrincipal);
     assert(usersMetadataTodosTest.queryGetUserMonotonicCreateTodoCount(idOne) == 0);
 
-    todosTest.persistNewUserTodosAllocation(idOne);
+    todosTest.initializeNewUserTodos(idOne);
     assert(todosTest.getEntries().size() == 1);
     assert(todosTest.getSpecificUserTotalTodoCount(idOne) == 0);
     assert(todosTest.getSpecificUserTotalTodoCount(idOne) == todosTest.getSpecificUserTodos(idOne).size());
@@ -295,7 +283,7 @@ shared ({ caller }) actor class() = this {
     let firstTodoContent = "1st todo content";
 
     // ADD UNSCHEDULED
-    todosTest.addNewUnscheduledTodo(idOne, firstTodoId, ?firstTodoTitle, ?firstTodoContent, null);
+    var res = todosTest.addNewUnscheduledTodo(idOne, firstTodoId, ?firstTodoTitle, ?firstTodoContent, null);
 
     assert(todosTest.getCountOfAllTodos() == 1);
     assert(todosTest.getSpecificUserTotalTodoCount(idOne) == 1);
@@ -315,7 +303,7 @@ shared ({ caller }) actor class() = this {
     let firstTodoEditedContent = "1st todo EDITED content";
     let firstTodoTags = ["tags"];
 
-    todosTest.editTodoMetadataOrContent(idOne, firstTodoId, ?firstTodoEditedTitle, ?firstTodoEditedContent, ?firstTodoTags);
+    res := todosTest.editTodoMetadataOrContent(idOne, firstTodoId, ?firstTodoEditedTitle, ?firstTodoEditedContent, ?firstTodoTags);
 
     assert(todosTest.getCountOfAllTodos() == 1);
     assert(todosTest.getSpecificUserTotalTodoCount(idOne) == 1);
@@ -340,7 +328,7 @@ shared ({ caller }) actor class() = this {
     let someTimeEnd: Time.Time = Time.now() +   100000000;
 
     // ADD SCHEDULED
-    todosTest.addNewScheduledTodo(idOne, secondTodoId, ?firstTodoTitle, ?firstTodoContent, null, someTimeStart, someTimeEnd);
+    res := todosTest.addNewScheduledTodo(idOne, secondTodoId, ?firstTodoTitle, ?firstTodoContent, null, someTimeStart, someTimeEnd);
 
     assert(todosTest.getCountOfAllTodos() == 2);
     assert(todosTest.getSpecificUserTotalTodoCount(idOne) == 2);
@@ -364,7 +352,7 @@ shared ({ caller }) actor class() = this {
     };
 
     // SCHEDULE PREVIOUSILY ALREADY ADDED UNSCHEDULED
-    todosTest.scheduleUnscheduledTodo(idOne, firstTodoId, someTimeStart, someTimeEnd);
+    res := todosTest.scheduleUnscheduledTodo(idOne, firstTodoId, someTimeStart, someTimeEnd);
 
     //make sure count didn't change
     assert(todosTest.getCountOfAllTodos() == 2);
@@ -401,7 +389,7 @@ shared ({ caller }) actor class() = this {
     // calling newActiveTodo will have a real start time the same as now()
     let currentTime = Time.now();
 
-    todosTest.addNewActiveTodo(idOne, thirdTodoId, ?thirdTodoTitle, ?thirdTodoContent, ?thirdTodoTags);
+    res :=  todosTest.addNewActiveTodo(idOne, thirdTodoId, ?thirdTodoTitle, ?thirdTodoContent, ?thirdTodoTags);
     assert(todosTest.getCountOfAllTodos() == 3);
     assert(todosTest.getSpecificUserTotalTodoCount(idOne) == 3);
     assert(todosTest.getSpecificUserTotalTodoCount(idOne) == todosTest.getSpecificUserTodos(idOne).size());
@@ -434,7 +422,7 @@ shared ({ caller }) actor class() = this {
 
     let forthTodo_firstStartTime = Time.now() + 10000000;
     let forthTodo_firstStopTime = Time.now() +  50000000;
-    todosTest.addNewScheduledTodo(idOne, forthTodoId, ?forthTodoTitle, ?forthTodoContent,?forthTodoTags, forthTodo_firstStartTime, forthTodo_firstStopTime);
+    res := todosTest.addNewScheduledTodo(idOne, forthTodoId, ?forthTodoTitle, ?forthTodoContent,?forthTodoTags, forthTodo_firstStartTime, forthTodo_firstStopTime);
 
     assert(todosTest.getCountOfAllTodos() == 4);
     assert(todosTest.getSpecificUserTotalTodoCount(idOne) == 4);
@@ -461,13 +449,13 @@ shared ({ caller }) actor class() = this {
     let forthTodo_updatedStartTime = Time.now() +  50000000;
     let forthTodo_updatedStopTime = Time.now() +  100000000;
     
-    todosTest.rescheduleScheduledTodo(idOne, forthTodoId, forthTodo_updatedStartTime, forthTodo_updatedStopTime);
+    res := todosTest.rescheduleScheduledTodo(idOne, forthTodoId, forthTodo_updatedStartTime, forthTodo_updatedStopTime);
 
     // going to edit other metadata just to verfiy things working
 
     let forthUpdatedTitle = "updated title";
     let forthUpdatedTags = ["tags"];
-    todosTest.editTodoMetadataOrContent(idOne, forthTodoId, ?forthUpdatedTitle, null, ?forthUpdatedTags);
+    res := todosTest.editTodoMetadataOrContent(idOne, forthTodoId, ?forthUpdatedTitle, null, ?forthUpdatedTags);
 
     // verify nothing changed as far as counts
     assert(todosTest.getCountOfAllTodos() == 4);
@@ -504,7 +492,7 @@ shared ({ caller }) actor class() = this {
     let fifthTodoId = Nat.toText(usersMetadataTodosTest.incrementSetAndGetUserMonotonicCreateTodoCount(idOne));
     assert(usersMetadataTodosTest.queryGetUserMonotonicCreateTodoCount(idOne) == 5);
 
-    todosTest.addNewUnscheduledTodo(idOne, fifthTodoId, ?"title", ?"content", null);
+    res := todosTest.addNewUnscheduledTodo(idOne, fifthTodoId, ?"title", ?"content", null);
 
     switch (todosTest.getSpecificUserTodo(idOne, fifthTodoId)) {
       case (#ok(todo)) {
@@ -520,7 +508,7 @@ shared ({ caller }) actor class() = this {
       case (#err(msg)) { assert(false); };
     };
 
-    todosTest.activateExistingTodo(idOne, forthTodoId);
+    res := todosTest.activateExistingTodo(idOne, forthTodoId);
 
     switch (todosTest.getSpecificUserTodo(idOne, forthTodoId)) {
       case (#ok(todo)) {
@@ -547,7 +535,7 @@ shared ({ caller }) actor class() = this {
       case (#err(msg)) { assert(false); };
     };
 
-    todosTest.activateExistingTodo(idOne, fifthTodoId);
+    res := todosTest.activateExistingTodo(idOne, fifthTodoId);
 
     switch (todosTest.getSpecificUserTodo(idOne, fifthTodoId)) {
       case (#ok(todo)) {
@@ -572,10 +560,10 @@ shared ({ caller }) actor class() = this {
 
     let idTwo = "idTwo";
 
-    usersMetadataTodosTest.persistNewUserMetadata(idTwo);
+    usersMetadataTodosTest.initializeNewUserMetadata(idTwo, canisterPrincipal);
     assert(usersMetadataTodosTest.queryGetUserMonotonicCreateTodoCount(idTwo) == 0);
 
-    todosTest.persistNewUserTodosAllocation(idTwo);
+    todosTest.initializeNewUserTodos(idTwo);
     assert(todosTest.getEntries().size() == 2);
     assert(todosTest.getSpecificUserTotalTodoCount(idOne) == 5);
     assert(todosTest.getSpecificUserTotalTodoCount(idTwo) == 0);
@@ -583,7 +571,7 @@ shared ({ caller }) actor class() = this {
     let secondpersonfirsttodo = Nat.toText(usersMetadataTodosTest.incrementSetAndGetUserMonotonicCreateTodoCount(idTwo));
     assert(usersMetadataTodosTest.queryGetUserMonotonicCreateTodoCount(idTwo) == 1);
 
-    todosTest.addNewUnscheduledTodo(idTwo, secondpersonfirsttodo, ?firstTodoTitle, ?firstTodoContent, null);
+    res := todosTest.addNewUnscheduledTodo(idTwo, secondpersonfirsttodo, ?firstTodoTitle, ?firstTodoContent, null);
 
     assert(todosTest.getCountOfAllTodos() == 6);
     assert(todosTest.getCountOfAllTodos() == (todosTest.getSpecificUserTotalTodoCount(idOne) + todosTest.getSpecificUserTotalTodoCount(idTwo)));
@@ -600,7 +588,7 @@ shared ({ caller }) actor class() = this {
       case (#err(msg)) { assert(false); };
     };
 
-    todosTest.editTodoMetadataOrContent(idTwo, secondpersonfirsttodo, ?firstTodoEditedTitle, ?firstTodoEditedContent, ?firstTodoTags);
+    res := todosTest.editTodoMetadataOrContent(idTwo, secondpersonfirsttodo, ?firstTodoEditedTitle, ?firstTodoEditedContent, ?firstTodoTags);
 
     assert(todosTest.getCountOfAllTodos() == 6);
     assert(todosTest.getCountOfAllTodos() == (todosTest.getSpecificUserTotalTodoCount(idOne) + todosTest.getSpecificUserTotalTodoCount(idTwo)));
@@ -619,7 +607,7 @@ shared ({ caller }) actor class() = this {
       case (#err(msg)) { assert(false); };
     };
 
-    todosTest.scheduleUnscheduledTodo(idTwo, secondpersonfirsttodo, someTimeStart, someTimeEnd);
+    res := todosTest.scheduleUnscheduledTodo(idTwo, secondpersonfirsttodo, someTimeStart, someTimeEnd);
 
     switch (todosTest.getSpecificUserTodo(idTwo, secondpersonfirsttodo)) {
       case (#ok(todo)) {
@@ -643,7 +631,7 @@ shared ({ caller }) actor class() = this {
     assert(todosTest.getSpecificUserTotalTodoCount(idTwo) == 1);
     assert(todosTest.getSpecificUserTotalTodoCount(idTwo) == todosTest.getSpecificUserTodos(idTwo).size());
 
-    todosTest.activateExistingTodo(idTwo, secondpersonfirsttodo);
+    res := todosTest.activateExistingTodo(idTwo, secondpersonfirsttodo);
 
     switch (todosTest.getSpecificUserTodo(idTwo, secondpersonfirsttodo)) {
       case (#ok(todo)) {
@@ -709,7 +697,7 @@ shared ({ caller }) actor class() = this {
       };
       case (#err(msg)) { assert(false); };
     };
-    todosTest.completeActiveTodo("idTwo", "1");
+    var res = todosTest.completeActiveTodo("idTwo", "1");
 
     assert(todosTest.getSpecificUserTotalTodoCount(idTwo) == 1);
     assert(todosTest.getCountOfAllTodos() == todosCount);

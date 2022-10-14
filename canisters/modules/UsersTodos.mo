@@ -1,46 +1,35 @@
-import Principal "mo:base/Principal";
-import Prim "mo:⛔";
-import Prelude "mo:base/Prelude";
-import D "mo:base/Debug";
-import HashMap "mo:base/HashMap";
-import Text "mo:base/Text";
-import Nat64 "mo:base/Nat64";
-import Nat32 "mo:base/Nat32";
-import Nat "mo:base/Nat";
-import Hash "mo:base/Hash";
-import Buffer "mo:base/Buffer";
-import Result "mo:base/Result";
-import Option "mo:base/Option";
 import Array "mo:base/Array";
-import List "mo:base/List";
-import Iter "mo:base/Iter";
 import Bool "mo:base/Bool";
+import Buffer "mo:base/Buffer";
+import HashMap "mo:base/HashMap";
 import Int "mo:base/Int";
+import Iter "mo:base/Iter";
+import Nat "mo:base/Nat";
+import Option "mo:base/Option";
+import Prelude "mo:base/Prelude";
+import Result "mo:base/Result";
+import Text "mo:base/Text";
 import Time "mo:base/Time";
-import Types "./static/Types";
-import Constants "./static/Constants";
 
-// todo -> excise duplicate [todo] gets when can use the one verified
-// change to always return result and only assert fail if deploying for production
+import Constants "./static/Constants";
+import Errors "./static/Errors";
+import Types "./static/Types";
 
 module {
+  // class wrapper for handling all users' todos
   public class UsersTodos(initSet: Types.UsersTodosStableState) {
 
-    var userIdToTodosMap = HashMap.fromIter<Types.UniqueId, [Types.Todo]>(
+    var userIdToTodosMap_ = HashMap.fromIter<Types.UniqueId, [Types.Todo]>(
       initSet.vals(), initSet.size(), Text.equal, Text.hash
     );
 
-    public func reset(): () {
-      userIdToTodosMap := HashMap.HashMap<Types.UniqueId, [Types.Todo]>(0, Text.equal, Text.hash);
-    };
-
     // non assertive boolean to see if the user id has a corresponding [todo]
-    func userIdMaps(forUniqueUserId: Types.UniqueId): Bool { 
-      Option.isSome(userIdToTodosMap.get(forUniqueUserId)) 
+    func userIdMaps_(forUniqueUserId: Types.UniqueId): Bool { 
+      Option.isSome(userIdToTodosMap_.get(forUniqueUserId)) 
     };
 
     // non assertive boolean to see if the todo id exists in the [todo]
-    func todoIdExistsInTodoSet(todosSearchSet: [Types.Todo], forUniqueTodoId: Types.UniqueId): Bool {
+    func todoIdExistsInTodoSet_(todosSearchSet: [Types.Todo], forUniqueTodoId: Types.UniqueId): Bool {
       let todo = Array.find<Types.Todo>(
         todosSearchSet, 
         func(t: Types.Todo): Bool { t.id == forUniqueTodoId }
@@ -52,24 +41,24 @@ module {
     };
 
     // for stable state
-    public func getEntries(): [(Types.UniqueId, [Types.Todo])] { Iter.toArray(userIdToTodosMap.entries()) };
+    public func getEntries(): [(Types.UniqueId, [Types.Todo])] { Iter.toArray(userIdToTodosMap_.entries()) };
     
     public func getCountOfAllTodos(): Nat { 
       var count: Nat = 0;
-      for (todos in userIdToTodosMap.vals()) { count += todos.size(); };
+      for (todos in userIdToTodosMap_.vals()) { count += todos.size(); };
       return count;
     };
 
     // assertive call to allocate :[todo] for given userid
-    public func persistNewUserTodosAllocation(forUniqueUserId: Types.UniqueId): () {
-      assert(not userIdMaps(forUniqueUserId));
-      userIdToTodosMap.put(forUniqueUserId, []);
+    public func initializeNewUserTodos(forUniqueUserId: Types.UniqueId): () {
+      assert(not userIdMaps_(forUniqueUserId));
+      userIdToTodosMap_.put(forUniqueUserId, []);
     };
 
     // assertive call 
     public func getSpecificUserTodos(forUniqueUserId: Types.UniqueId): [Types.Todo] {
-      assert(userIdMaps(forUniqueUserId));
-      let exists = userIdToTodosMap.get(forUniqueUserId);
+      assert(userIdMaps_(forUniqueUserId));
+      let exists = userIdToTodosMap_.get(forUniqueUserId);
       switch (exists) {
         case (null) { Prelude.unreachable(); };
         case (?exists) { return exists };
@@ -78,20 +67,20 @@ module {
 
     // assertive call
     public func getSpecificUserTotalTodoCount(forUniqueUserId: Types.UniqueId): Nat {
-      assert(userIdMaps(forUniqueUserId));
+      assert(userIdMaps_(forUniqueUserId));
       return getSpecificUserTodos(forUniqueUserId).size();
     };
 
     // assertive call but will assert fail if user id does not have todos created at all
     public func getSpecificUserTodo(forUniqueUserId: Types.UniqueId, forUniqueTodoId: Types.UniqueId): Result.Result<Types.Todo, Text> {
-      assert(userIdMaps(forUniqueUserId));
+      assert(userIdMaps_(forUniqueUserId));
       let todo = Array.find<Types.Todo>(
         getSpecificUserTodos(forUniqueUserId), 
         func(t: Types.Todo): Bool { t.id == forUniqueTodoId }
       );
       switch (todo) {
         case (?todo) { #ok(todo) };
-        case (_) { #err"No todo with supplied id for supplied user id was found"; };
+        case (_) { #err(Errors.TodoNotFound)};
       };
     };
 
@@ -101,56 +90,52 @@ module {
       titleIn: ?Text,
       contentIn: ?Text,
       tagsIn: ?[Text],
-    ): () {
-      assert(userIdMaps(forUniqueUserId));
+    ): Result.Result<Types.Todo, Text> {
+      assert(userIdMaps_(forUniqueUserId));
       let userTodos = getSpecificUserTodos(forUniqueUserId);
-      assert(todoIdExistsInTodoSet(userTodos, forUniqueTodoId));
-      userIdToTodosMap.put(
+      assert(todoIdExistsInTodoSet_(userTodos, forUniqueTodoId));
+      userIdToTodosMap_.put(
         forUniqueUserId, 
-        editTodoDetails(
+        editTodoDetails_(
           userTodos, 
           forUniqueTodoId, titleIn, contentIn, tagsIn, null
         )
       );
+      return getSpecificUserTodo(forUniqueUserId, forUniqueTodoId);
     }; 
 
-    // { unscheduled, scheduled, active, complete }
-    // psuedostate-machine flowchart representation of todo status
-    //               -> xactive 
-    //                     -> xcomplete (only)
-    // <user intent> -> xscheduled 
-    //                      -> xactive or -> xunscheduled (if bumped) or -> x(re)scheduled
-    //               -> xunscheduled
-    //                      -> xscheduled or -> xactive
-    // so todo status is a dag with complete as the 
-
-    func addTodo( 
+    // generic add function, note traps if invalid data is passed as error checking done prior to this being called
+    func addTodo_( 
       forUniqueUserId: Types.UniqueId,
       newTodoId: Types.UniqueId,
       titleIn: ?Text,
       contentIn: ?Text,
       tagsIn: ?[Text],
       scheduledStatusIn: Types.ScheduledStatus,
-    ): () { // maybe change return type to Result? instead of assert failing, but assert fails for "system sures"
-      assert(userIdMaps(forUniqueUserId));
+    ): Result.Result<Types.Todo, Text> {
+      assert(userIdMaps_(forUniqueUserId));
       switch (scheduledStatusIn) {
         case (#completed args) { assert(true); };
-        case (#scheduled (start, stop)) { assert(start < stop); };
+        case (#scheduled (start, stop)) { assert(start < stop) }; // error is returned on incoming call, so can safely explicitly trap here
         case (#active (start, optNomInterval)) { assert(not Option.isSome(optNomInterval)); };
         case (#unscheduled) {  };
       }; 
-      // reverse order unwrapped:
+      // reverse order unwrapped: (cause this is totally not confusing)
       // get existing todos
       // add new unscheduled todo to this list
       // pass the returned list with the new todo to the edit todo function
       // pass the returned list now containing a new todo whose fields have been set to the map 
-      userIdToTodosMap.put(forUniqueUserId, 
-        editTodoDetails( // cause this is totally not confusing
-          addNewUnscheduledNonSpecificTodo(
+
+      // alternatively the immutable array of todos could be retrieved, thawed, edited, frozen and stored back in the map
+      // was going for "functional"
+      userIdToTodosMap_.put(forUniqueUserId, 
+        editTodoDetails_(
+          addNewUnscheduledNonSpecificTodo_(
             getSpecificUserTodos(forUniqueUserId), newTodoId), 
             newTodoId, titleIn, contentIn, tagsIn, ?scheduledStatusIn
         )
       );
+      return getSpecificUserTodo(forUniqueUserId, newTodoId);
     }; 
 
     public func addNewUnscheduledTodo(
@@ -159,8 +144,8 @@ module {
       titleIn: ?Text,
       contentIn: ?Text,
       tagsIn: ?[Text],
-    ): () {
-      addTodo(forUniqueUserId, newTodoId, titleIn, contentIn, tagsIn, #unscheduled);
+    ): Result.Result<Types.Todo, Text>  {
+      return addTodo_(forUniqueUserId, newTodoId, titleIn, contentIn, tagsIn, #unscheduled);
     };
 
     public func addNewScheduledTodo(
@@ -171,9 +156,11 @@ module {
       tagsIn: ?[Text],
       nominalStartTimeIn: Time.Time,
       nominalStopTimeIn: Time.Time
-    ): () {
-      assert(nominalStartTimeIn < nominalStopTimeIn);
-      addTodo(forUniqueUserId, newTodoId, titleIn, contentIn, tagsIn, (#scheduled(nominalStartTimeIn, nominalStopTimeIn)));
+    ): Result.Result<Types.Todo, Text>  {
+      if (nominalStartTimeIn > nominalStopTimeIn) {
+        return #err(Errors.InvalidScheduleTimes);
+      };
+      return addTodo_(forUniqueUserId, newTodoId, titleIn, contentIn, tagsIn, (#scheduled(nominalStartTimeIn, nominalStopTimeIn)));
     };
 
     public func addNewActiveTodo(
@@ -182,8 +169,8 @@ module {
       titleIn: ?Text,
       contentIn: ?Text,
       tagsIn: ?[Text],
-    ): () {
-      addTodo(forUniqueUserId, newTodoId, titleIn, contentIn, tagsIn, (#active(Time.now(), null)));
+    ): Result.Result<Types.Todo, Text> {
+      return addTodo_(forUniqueUserId, newTodoId, titleIn, contentIn, tagsIn, (#active(Time.now(), null)));
     };
 
     // turn an unscheduled todo into a scheduled todo 
@@ -192,9 +179,11 @@ module {
       forUniqueTodoId: Types.UniqueId,
       nominalStartTimeIn: Time.Time, // becomes nominal
       nominalStopTimeIn: Time.Time   // becomes nominal
-    ): () {
-      assert(nominalStartTimeIn < nominalStopTimeIn);
-      assert(userIdMaps(forUniqueUserId));
+    ): Result.Result<Types.Todo, Text> {
+      if (nominalStartTimeIn > nominalStopTimeIn) {
+        return #err(Errors.InvalidScheduleTimes);
+      };
+      assert(userIdMaps_(forUniqueUserId));
       let todo = Array.find<Types.Todo>(
         getSpecificUserTodos(forUniqueUserId), 
         func(t: Types.Todo): Bool { t.id == forUniqueTodoId }
@@ -209,10 +198,11 @@ module {
         };
       };
       let allTodos = getSpecificUserTodos(forUniqueUserId);
-      let updatedTodos = editTodoDetails(
+      let updatedTodos = editTodoDetails_(
         allTodos, forUniqueTodoId, null, null, null, 
         ?(#scheduled(nominalStartTimeIn, nominalStopTimeIn))); 
-      userIdToTodosMap.put(forUniqueUserId, updatedTodos);
+      userIdToTodosMap_.put(forUniqueUserId, updatedTodos);
+      return getSpecificUserTodo(forUniqueUserId, forUniqueTodoId);
     }; 
 
     public func rescheduleScheduledTodo(
@@ -220,9 +210,11 @@ module {
       forUniqueTodoId: Types.UniqueId,
       nominalStartTimeIn: Time.Time, // becomes nominal
       nominalStopTimeIn: Time.Time   // becomes nominal
-    ): () {
-      assert(nominalStartTimeIn < nominalStopTimeIn);
-      assert(userIdMaps(forUniqueUserId));
+    ): Result.Result<Types.Todo, Text> {
+      if (nominalStartTimeIn > nominalStopTimeIn) {
+        return #err(Errors.InvalidScheduleTimes);
+      };
+      assert(userIdMaps_(forUniqueUserId));
       let userTodos = getSpecificUserTodos(forUniqueUserId);
       let todo = Array.find<Types.Todo>(userTodos, 
         func(t: Types.Todo): Bool { t.id == forUniqueTodoId }
@@ -237,18 +229,19 @@ module {
         };
       };
       let allTodos = getSpecificUserTodos(forUniqueUserId);
-      let updatedTodos = editTodoDetails(
+      let updatedTodos = editTodoDetails_(
         allTodos, forUniqueTodoId, null, null, null, 
         ?(#scheduled(nominalStartTimeIn, nominalStopTimeIn))); 
-      userIdToTodosMap.put(forUniqueUserId, updatedTodos);
+      userIdToTodosMap_.put(forUniqueUserId, updatedTodos);
+      return getSpecificUserTodo(forUniqueUserId, forUniqueTodoId);
     }; 
 
     // can only be scheduled, for "bumping" in case an active todo completes after another one was scheduled to be active
     public func unscheduleScheduledTodo(
       forUniqueUserId: Types.UniqueId,
       forUniqueTodoId: Types.UniqueId,
-    ): () {
-      assert(userIdMaps(forUniqueUserId));
+    ): Result.Result<Types.Todo, Text> {
+      assert(userIdMaps_(forUniqueUserId));
       let userTodos = getSpecificUserTodos(forUniqueUserId);
       let todo = Array.find<Types.Todo>(userTodos, 
         func(t: Types.Todo): Bool { t.id == forUniqueTodoId }
@@ -263,18 +256,19 @@ module {
         };
       };
       let allTodos = getSpecificUserTodos(forUniqueUserId);
-      let updatedTodos = editTodoDetails(
+      let updatedTodos = editTodoDetails_(
         allTodos, forUniqueTodoId, null, null, null, 
         ?(#unscheduled)); 
-      userIdToTodosMap.put(forUniqueUserId, updatedTodos);
+      userIdToTodosMap_.put(forUniqueUserId, updatedTodos);
+      return getSpecificUserTodo(forUniqueUserId, forUniqueTodoId);
     }; 
 
     // can be either scheduled or unscheduled
     public func activateExistingTodo(
       forUniqueUserId: Types.UniqueId,
       forUniqueTodoId: Types.UniqueId,
-    ): () {
-      assert(userIdMaps(forUniqueUserId));
+    ): Result.Result<Types.Todo, Text> {
+      assert(userIdMaps_(forUniqueUserId));
       let userTodos = getSpecificUserTodos(forUniqueUserId);
       let todo = Array.find<Types.Todo>(userTodos, 
         func(t: Types.Todo): Bool { t.id == forUniqueTodoId }
@@ -295,19 +289,20 @@ module {
 
       let allTodos = getSpecificUserTodos(forUniqueUserId);
 
-      let updatedTodos = editTodoDetails(
+      let updatedTodos = editTodoDetails_(
         allTodos, forUniqueTodoId, null, null, null, 
         ?(schedule)); 
 
-      userIdToTodosMap.put(forUniqueUserId, updatedTodos);
+      userIdToTodosMap_.put(forUniqueUserId, updatedTodos);
+      return getSpecificUserTodo(forUniqueUserId, forUniqueTodoId);
     }; 
  
     // can only be active
     public func completeActiveTodo(
       forUniqueUserId: Types.UniqueId,
       forUniqueTodoId: Types.UniqueId,
-    ): () {
-      assert(userIdMaps(forUniqueUserId));
+    ): Result.Result<Types.Todo, Text>  {
+      assert(userIdMaps_(forUniqueUserId));
       let userTodos = getSpecificUserTodos(forUniqueUserId);
       let todo = Array.find<Types.Todo>(userTodos, 
         func(t: Types.Todo): Bool { t.id == forUniqueTodoId }
@@ -329,18 +324,19 @@ module {
 
       let allTodos = getSpecificUserTodos(forUniqueUserId);
 
-      let updatedTodos = editTodoDetails(
+      let updatedTodos = editTodoDetails_(
         allTodos, forUniqueTodoId, null, null, null, 
         ?(schedule)); 
 
-      userIdToTodosMap.put(forUniqueUserId, updatedTodos);
+      userIdToTodosMap_.put(forUniqueUserId, updatedTodos);
+      return getSpecificUserTodo(forUniqueUserId, forUniqueTodoId);
     }; 
 
     public func removeExistingTodo(
       forUniqueUserId: Types.UniqueId,
       forUniqueTodoId: Types.UniqueId,
-    ): () {
-      assert(userIdMaps(forUniqueUserId));
+    ): Result.Result<(Text, Types.UniqueId), Text>  {
+      assert(userIdMaps_(forUniqueUserId));
       let userTodos = getSpecificUserTodos(forUniqueUserId);
       let todo = Array.find<Types.Todo>(userTodos, 
         func(t: Types.Todo): Bool { t.id == forUniqueTodoId }
@@ -350,12 +346,13 @@ module {
         case (null) { assert(false); }; // verify it existed
         case (?todo) { };
       };
-      let updatedTodos = deleteTodo(userTodos, forUniqueTodoId); 
-      userIdToTodosMap.put(forUniqueUserId, updatedTodos);
+      let updatedTodos = deleteTodo_(userTodos, forUniqueTodoId); 
+      userIdToTodosMap_.put(forUniqueUserId, updatedTodos);
+      return #ok("Successfully removed todo", forUniqueTodoId);
     }; 
 
     // generic function that simply returns array with new non-specific todo added
-    func addNewUnscheduledNonSpecificTodo(
+    func addNewUnscheduledNonSpecificTodo_(
       existingTodos: [Types.Todo],
       newTodoId: Types.UniqueId,
     ): [Types.Todo] {
@@ -373,7 +370,7 @@ module {
     };
 
     // generic function that overwrites any existing values if new values are present
-    func editTodoDetails(
+    func editTodoDetails_(
       existingTodos: [Types.Todo],
       targetTodoId: Types.UniqueId,
       titleIn: ?Text,
@@ -403,7 +400,7 @@ module {
   };
 
      // generic function that drops todo if present
-    func deleteTodo(existingTodos: [Types.Todo], targetTodoId: Types.UniqueId): [Types.Todo] {
+    func deleteTodo_(existingTodos: [Types.Todo], targetTodoId: Types.UniqueId): [Types.Todo] {
       var throwError: Bool = true;
       let filterFcn = func(todo: Types.Todo): Bool {
         if (targetTodoId == todo.id) {

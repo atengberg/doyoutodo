@@ -1,23 +1,9 @@
-import Principal "mo:base/Principal";
-import Prim "mo:⛔";
-import Prelude "mo:base/Prelude";
-import D "mo:base/Debug";
-import HashMap "mo:base/HashMap";
-import Text "mo:base/Text";
-import Nat64 "mo:base/Nat64";
-import Nat32 "mo:base/Nat32";
-import Nat "mo:base/Nat";
-import Hash "mo:base/Hash";
-import Result "mo:base/Result";
-import Option "mo:base/Option";
-import Array "mo:base/Array";
-import List "mo:base/List";
-import Iter "mo:base/Iter";
-import Bool "mo:base/Bool";
-import Int "mo:base/Int";
 import Time "mo:base/Time";
 
 module {
+
+  // defining a class of types will simplify the rest of the code, and also make it easier to share in the event
+  // the canister should have other canister's come a'calling
 
   public type UniqueId = Text;
 
@@ -27,6 +13,7 @@ module {
     monotonicCreateTodoCount: Nat;
     preferredDisplayName: Text;
     emailAddress: Text;
+    associatedPrincipal: Text;
   };
 
   public type Todo = {
@@ -42,8 +29,20 @@ module {
   public type StartTime = Time.Time;
   public type StopTime = Time.Time;
   public type Interval = (StartTime, StopTime);
-  public type NominalInterval = Interval;
+  public type NominalInterval = Interval; // "nominal" means "scheduled as assigned with specific start and stop time"
 
+    //                                          Todo "Life-Cycle"
+    //               +-> active 
+    //                     -> complete (only)
+    // <user intent> +-> scheduled 
+    //                      -> active or -> xunscheduled (if bumped) or -> (re)scheduled
+    //               +-> unscheduled
+    //                      -> scheduled or -> active 
+
+    // thus, every todo that is completed has at least a real stop time assigned when it is completed. it's real start time
+    // is assigned when it is activated. if it was scheduled before it was activated, it will also have a nominal start and
+    // stop time; if wasn't (it was unscheduled then activated, or created as an active todo) it will only have the real
+    // start and stop time. 
   public type ScheduledStatus = {
     #unscheduled;
     #scheduled: NominalInterval;
@@ -55,25 +54,14 @@ module {
   public type UsersMetadataStableState = [(UniqueId, UserMetadata)];
   public type UsersTodosStableState = [(UniqueId, [Todo])];
 
-  // alternative incarnation ?  normalize like-wise scoped fields for reusability
-  public type TodoType = {
-    #atomic;
-    #composite: [UniqueId]; // contains a list of todo ids it containrs
+  public type ClientError = {
+    #Unauthorized: Text;
+    #BadRequest: Text;
+    #NotFound: Text;
   };
 
-  public type TodoV2 = {
-    kind: TodoType;
-    metadata: TodoMetadata;
-    schedule: ScheduledStatus;
-    content: Text;
-  };
-
-// metadata types { #create #edit #reference #administrative etc? }
-  public type TodoMetadata = {
-    id: UniqueId;
-    epochCreationTime: Time.Time;
-    epochLastUpdateTime: Time.Time;
-    title: Text;
-    tags: [Text];
-  };
+  public let AnonUnauthorized: Text = "Users must authenticate to access requested resources";
+  public let InvalidScheduleTimes = #BadRequest("Todo cannot be scheduled with a planned start time after planned stop time");
+  public let TodoNotFound = #NotFound("No todo can be found with requested identifer");
+  public let ProfileNotFound = #NotFound("No profile can be found with requested identifier");
 };

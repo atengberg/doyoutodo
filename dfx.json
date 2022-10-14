@@ -1,21 +1,22 @@
 {
   "canisters": {
+    "internet_identity": {
+      "type": "custom",
+      "candid": "canisters/local_internet_identity/internet_identity.did",
+      "wasm": "canisters/local_internet_identity/internet_identity.wasm",
+      "build": "canisters/local_internet_identity/download-did-and-wasm-script"
+    },
     "main": {
       "main": "canisters/main.mo",
       "type": "motoko"
     },
-    "main_local": {
-      "main": "canisters/main_local.mo",
-      "type": "motoko"
-    },
-    "main_tests": {
+    "tests": {
       "main": "canisters/tests.mo",
       "type": "motoko"
     },
     "assets": {
       "dependencies": [
-        "main", 
-        "main_local"
+        "main"
       ],
       "frontend": {
         "entrypoint": "dist/index.html"
