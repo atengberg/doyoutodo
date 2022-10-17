@@ -2,6 +2,8 @@ Updated DoYou code for second half of grant.
 
 Both frontend and backend code are fully functional. Additionally, local Internet Identity canister was added and the frontend is configured to point the wallet provider automatically configured to that canister's principal if deploying locally, or the default providers connect-2-ic uses if deployed to mainnet. 
 
+Live demo: https://55qqt-niaaa-aaaal-qbe6a-cai.ic0.app/
+
 After cloning:
  1) run chmod +x on /canisters/local_internet_identity/download-did-and-wasm-script* 
  2) npm install
