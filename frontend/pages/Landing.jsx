@@ -6,8 +6,6 @@ import logo from "../assets/logo-2do.png";
 import { useNavigate } from "react-router";
 import { AppContext } from '../components/AppContainer'
 
-
-
 const Landing = () => {
 
     const getRandomSecondsCount = () => {
@@ -26,7 +24,22 @@ const Landing = () => {
     }
     return (
         <SContainer>
-            <SplashLogo src={logo} randomSeconds={getRandomSecondsCount()}></SplashLogo>
+                <div className="flex-one" />
+                <CenterPanel>
+
+                <SplashLogo src={logo} randomSeconds={getRandomSecondsCount()}></SplashLogo>
+        
+                <TitleStack>
+                    <div className="one-rem-padding" />
+                    <div>DoYou Todo</div>
+                    <div>on the</div>
+                    <div>Internet Computer</div>
+                    
+                </TitleStack>
+                <div className="flex-one" />
+
+            </CenterPanel>
+            
         </SContainer>
     )
 }
@@ -37,6 +50,22 @@ const SContainer = styled.div`
     flex-direction: column;
     justify-content: center;
     align-items: center;
+`
+
+const CenterPanel = styled.div`
+    display: flex;
+    align-items: center;
+    margin: 0 auto;
+    justify-content: center;
+`
+
+const TitleStack = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    font-size: 3em;
+    text-shadow: 1px 2px 3px hsla(240, 60%, 30%, .5);
+    margin: auto 0;
 `
 
 const HueRotate = keyframes`
@@ -59,7 +88,5 @@ const SplashLogo = styled.img`
     animation-duration: ${props => props.randomSeconds}s;
     animation-iteration-count: infinite;
 `
-
-
 
 export default Landing;
