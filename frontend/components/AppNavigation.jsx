@@ -14,7 +14,7 @@ const AppNavigation = () => {
     return (
         <>
         <SNavigation>
-            <SLink to="/">2Do on the IC</SLink>
+            <SLink to="/">DoYou Todo on the IC</SLink>
             <div className="flex-one" />
             <ConnectButton />
         </SNavigation>
@@ -71,8 +71,8 @@ const SNavLink = styled(NavLink)`
 const SLink = styled(Link)`
     text-decoration: none;
     color: black;
-    text-transform: uppercase;
     font-size: 2em;
+    text-shadow: 1px 2px 3px hsla(240, 60%, 30%, .5);
 
     &:visited {
         background-color: white;
