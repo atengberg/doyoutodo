@@ -53,15 +53,4 @@ module {
   public type PIdContextStableState = [(Principal, UniqueId)];
   public type UsersMetadataStableState = [(UniqueId, UserMetadata)];
   public type UsersTodosStableState = [(UniqueId, [Todo])];
-
-  public type ClientError = {
-    #Unauthorized: Text;
-    #BadRequest: Text;
-    #NotFound: Text;
-  };
-
-  public let AnonUnauthorized: Text = "Users must authenticate to access requested resources";
-  public let InvalidScheduleTimes = #BadRequest("Todo cannot be scheduled with a planned start time after planned stop time");
-  public let TodoNotFound = #NotFound("No todo can be found with requested identifer");
-  public let ProfileNotFound = #NotFound("No profile can be found with requested identifier");
 };
