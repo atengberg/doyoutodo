@@ -5,6 +5,7 @@ module {
   // defining a class of types will simplify the rest of the code, and also make it easier to share in the event
   // the canister should have other canister's come a'calling
 
+  // this should be replaced by uuid or ulid see aviate labs https://github.com/aviate-labs/ulid.mo
   public type UniqueId = Text;
 
   public type UserMetadata = {
