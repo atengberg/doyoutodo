@@ -21,6 +21,9 @@ import todoViewModelTransform from '../actions/viewModelTransforms';
 
 const useCanisterTodos = (isConnected, principal, canister) => {
  
+    // note the useCanister hook provides 2 state variables (result error), however I manually handle them
+    // here to learn how to expect results from canisters
+ 
     const [ todos, setTodos ] = useState([]);
     const [ isLoading, setLoading ] = useState(false);
     const [ isUpdating, setUpdating ] = useState(false);
